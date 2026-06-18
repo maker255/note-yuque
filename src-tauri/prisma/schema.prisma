@@ -1,0 +1,20 @@
+datasource db {
+    provider = "sqlite"
+    // 运行时由 Rust 设置 DATABASE_URL 指向应用数据目录下的 notes.db
+    url      = env("DATABASE_URL")
+}
+
+generator client {
+    // 对应 .cargo/config.toml 中的 cargo 别名
+    provider = "cargo prisma"
+    // 生成位置相对于本 schema 文件
+    output   = "../src/prisma.rs"
+}
+
+model Note {
+    id        String   @id @default(cuid())
+    title     String
+    content   String   @default("")
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}

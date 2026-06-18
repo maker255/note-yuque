@@ -1,0 +1,35 @@
+# prisma 代码生成器拆成独立成员 crate（prisma-cli/），使本应用包只含一个二进制。
+# 否则 Tauri 打包器会把包内所有二进制（含 prisma 生成器）一并塞进 .deb，甚至误当主程序。
+# prisma-cli 不是默认构建目标：`cargo build` / `tauri build` 只编译当前包(notes-app)，
+# 仅 `cargo prisma generate`（= run -p prisma-cli）时才会编译它。
+[workspace]
+members = ["prisma-cli"]
+
+[package]
+name = "notes-app"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "notes_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Prisma (纯 Rust)。仅启用 sqlite 连接器以减少编译量/体积；
+# migrations 特性提供 _migrate_deploy() 在启动时自动建表（运行期需要）。
+prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11", default-features = false, features = ["sqlite", "migrations"] }
+

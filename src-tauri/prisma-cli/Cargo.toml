@@ -1,0 +1,15 @@
+[package]
+name = "prisma-cli"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# prisma-client-rust 代码生成器入口，仅开发期使用。
+# 二进制名固定为 `prisma`，配合 src-tauri/.cargo/config.toml 的别名：
+#   cargo prisma generate   →   cargo run -p prisma-cli -- generate
+[[bin]]
+name = "prisma"
+path = "src/main.rs"
+
+[dependencies]
+prisma-client-rust-cli = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11", default-features = false, features = ["sqlite", "migrations"] }
