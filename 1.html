@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>侧边栏示例</title>
+<style>
+  :root{
+    --bg: #ffffff;
+    --subtle: #f6f7f8;
+    --text: #1f2328;
+    --muted: #6e7781;
+    --border: #e6e8eb;
+    --hover: #eef2f6;
+    --active: #e8f1ff;
+    --green: #22c55e;
+    --btn-bg:#fff;
+    --btn-border:#e5e7eb;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.04);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,.18), 0 4px 10px rgba(0,0,0,.06);
+    --shadow-inset: inset 0 0 0 1px var(--border);
+    --pill:#f3f6fb;
+  }
+
+  html,body{ height:100%; margin:0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; color: var(--text); background: var(--subtle); }
+
+  .app{ display:flex; height:100vh; }
+
+  /* 左侧图标栏 */
+  .rail{ width: 56px; background:#fafafa; border-right:1px solid var(--border); display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:12px; }
+  .dot{ width: 32px; height: 32px; border-radius: 8px; background:#f3f4f6; display:grid; place-items:center; color:#7a828a; font-size:16px; }
+
+  /* 主侧边栏：美化 */
+  .sidebar{ width: 320px; background: var(--bg); border-right:1px solid var(--border); display:flex; flex-direction:column; }
+  .topbar{ height: 56px; display:flex; align-items:center; padding: 0 14px; gap:10px; border-bottom:1px solid var(--border); background: var(--bg); position:relative; }
+  .topbar .title{ font-weight:700; font-size:16px; }
+  .topbar .spacer{ flex:1; }
+
+  /* + 按钮容器和按钮本体 */
+  .create-wrap{ position:relative; padding-bottom:8px; }
+  .create{ width:34px; height:34px; border-radius:8px; background: var(--green); color:#fff; display:grid; place-items:center; font-size:22px; cursor:default; }
+
+  /* + 弹窗 */
+  .create-menu{ position:absolute; right:0; top:44px; width:240px; background:var(--bg); border:1px solid var(--border); border-radius:14px; box-shadow: var(--shadow-lg); padding:8px 0; opacity:0; visibility:hidden; transform: translateY(-4px); pointer-events:auto; transition: opacity .14s ease, transform .14s ease, visibility .14s linear; z-index:10; }
+  .create-wrap:hover .create-menu, .create-wrap:focus-within .create-menu, .create-menu:hover{ opacity:1; visibility:visible; transform: translateY(0); }
+  .cm-item{ display:flex; align-items:center; gap:12px; padding:10px 14px; cursor:default; }
+  .cm-item:hover{ background:var(--hover); }
+  .cm-ico{ width:22px; height:22px; border-radius:6px; display:grid; place-items:center; box-shadow: var(--shadow-inset); }
+  .cm-ico.doc{ background:#eaf2ff; color:#3b82f6; }
+  .cm-ico.sheet{ background:#e9f7ef; color:#22c55e; }
+  .cm-ico.board{ background:#f3e8ff; color:#a855f7; }
+  .cm-ico.db{ background:#e6f7fc; color:#06b6d4; }
+  .cm-ico.tpl{ background:#fff7ed; color:#f59e0b; }
+  .cm-ico.imp{ background:#eef2ff; color:#6366f1; }
+  .cm-ico.ai{ background:#eefcf2; color:#16a34a; }
+  .cm-ico.grp{ background:#fff7ed; color:#d97706; }
+  .cm-ico.link{ background:#eef6ff; color:#2563eb; }
+  .cm-text{ flex:1; }
+  .cm-kbd{ color:#9aa1aa; font-size:12px; }
+  .cm-dot{ width:8px; height:8px; border-radius:50%; background:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.18); }
+  .cm-sep{ height:1px; background:var(--border); margin:8px 0; }
+
+  .nav{ padding: 10px 10px 18px; }
+
+  /* 首页胶囊 */
+  .home-pill{ display:flex; align-items:center; gap:10px; height:44px; padding:0 12px; border-radius:12px; background: var(--pill); font-weight:600; }
+  .home-pill .icon{ width:20px; height:20px; color:#64748b; }
+
+  .section-title{ display:flex; align-items:center; gap:10px; color:var(--muted); font-size:13px; padding:14px 6px 6px; text-transform:none; letter-spacing:.02em; }
+
+  /* 列表项 */
+  .row-btn{ display:flex; align-items:center; gap:10px; padding: 10px 8px; border-radius:10px; cursor:default; }
+  .row-btn:hover{ background: var(--hover); }
+  .row-btn .name{ font-size:16px; }
+
+  /* 分组行，带操作按钮 */
+  .group{ display:flex; align-items:center; gap:10px; padding: 8px 8px; border-radius:10px; }
+  .group:hover{ background: var(--hover); }
+  .group .name{ font-size:16px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .group .chev{ width:18px; height:18px; color:#9197a1; }
+  .group .act{ margin-left:auto; display:flex; gap:6px; opacity:.0; transition:opacity .15s ease; }
+  .group:hover .act{ opacity:1; }
+  .act .icon-btn{ width:32px; height:32px; display:grid; place-items:center; border-radius:8px; background:#fff; box-shadow: var(--shadow-inset); }
+  .icon-btn .icon{ width:18px; height:18px; color:#5b6470; }
+
+  /* 子列表 */
+  .subnav{ padding-left:28px; }
+  .bullet{ width:8px; height:8px; border-radius:50%; background:#d1d5db; }
+  .sub-item{ display:flex; align-items:center; gap:12px; padding:8px 8px; border-radius:10px; }
+  .sub-item:hover{ background: var(--hover); }
+  .sub-item .name{ color:#343a40; }
+
+  .divider{ height:1px; background:var(--border); margin:10px 6px; border-radius:1px; }
+
+  /* 内容区、卡片、欢迎与下列表维持不变 */
+  .content{ flex:1; padding:24px; }
+  .doc-card{ max-width: 1200px; margin: 0 auto; background: var(--bg); border-radius: 16px; box-shadow: var(--shadow-sm); padding: 28px 32px; }
+  .doc-row{ display:flex; align-items:center; gap:20px; }
+  .doc-left{ display:flex; align-items:center; gap:16px; flex:1; }
+  .big-icon{ width:72px; height:72px; border-radius:14px; background:#e8f0ff; display:grid; place-items:center; color:#4c84ff; font-size:36px; }
+  .title-wrap{ display:flex; align-items:center; gap:16px; }
+  .title{ font-size:40px; line-height:1; font-weight:800; letter-spacing:.02em; }
+  .stats{ display:flex; align-items:center; gap:28px; margin-top:14px; color:#3c4146; }
+  .stat{ display:flex; align-items:center; gap:6px; font-size:22px; font-weight:700; }
+  .stat small{ font-size:16px; font-weight:500; color:var(--muted); }
+  .info{ width:18px; height:18px; color:#98a1ab; }
+  .doc-right{ display:flex; align-items:center; gap:14px; }
+  .btn{ display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 16px; border-radius:10px; background: var(--btn-bg); border:1px solid var(--btn-border); color:#0f172a; font-weight:600; font-size:15px; }
+  .btn .icon{ width:18px; height:18px; }
+  .avatar{ width:44px; height:44px; border-radius:50%; background:#d1d5db url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="%23b4bac2"/><path d="M4 22a8 8 0 0116 0" fill="%23b4bac2"/></svg>') center/72% no-repeat; }
+
+  .welcome{ max-width: 1100px; margin: 28px auto 8px; }
+  .welcome h3{ margin:0 0 8px 0; font-size:22px; }
+  .welcome p{ margin:0; color:var(--muted); font-size:18px; line-height:1.7; }
+
+  .doc-list{ max-width:1100px; margin: 12px auto 60px; }
+  .list-row{ display:flex; align-items:center; gap:16px; padding: 14px 0; font-size:18px; }
+  .caret{ width:20px; text-align:center; color:#9aa4af; }
+  .name{ flex:1; position:relative; }
+  .date{ color:#6b7280; font-size:16px; white-space:nowrap; }
+  .leader{ position:relative; }
+  .leader::after{ content:""; position:absolute; left:0; right:0; top:50%; height:1px; background: repeating-linear-gradient(90deg, var(--border), var(--border) 4px, transparent 4px, transparent 10px); transform: translateY(-50%); opacity:.7; }
+  .sub{ padding-left:40px; }
+
+  /* 中央弹窗（新建知识库） */
+  #kb-toggle{ position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+  .kb-modal{ position:fixed; inset:0; display:none; place-items:center; background: rgba(15,23,42,.45); z-index:50; }
+  #kb-toggle:checked ~ .kb-modal{ display:grid; }
+  .kb-dialog{ width:720px; max-width: calc(100% - 32px); background:var(--bg); border:1px solid var(--border); border-radius:16px; box-shadow: var(--shadow-lg); }
+  .kb-head{ display:flex; align-items:center; justify-content:space-between; padding:18px 20px; border-bottom:1px solid var(--border); }
+  .kb-title{ font-size:20px; font-weight:700; }
+  .kb-close{ width:32px; height:32px; border-radius:8px; display:grid; place-items:center; color:#8a93a0; background:#fff; box-shadow: var(--shadow-inset); cursor:default; }
+  .kb-body{ padding:18px 20px 6px; }
+  .kb-section-title{ font-weight:700; margin:0 0 12px 0; }
+  .kb-row{ display:flex; align-items:stretch; gap:12px; }
+  .kb-icon{ width:52px; height:52px; border-radius:12px; background:#eaf2ff; color:#4c84ff; display:grid; place-items:center; font-size:28px; }
+  .kb-input, .kb-textarea, .kb-select{ width:100%; border:1px solid var(--border); border-radius:10px; padding:12px 14px; font-size:16px; background:var(--bg); box-shadow: inset 0 0 0 2px transparent; }
+  .kb-input:focus, .kb-textarea:focus, .kb-select:focus{ outline:none; box-shadow: inset 0 0 0 2px #16a34a; border-color:#16a34a33; }
+  .kb-textarea{ min-height:140px; resize:vertical; }
+  .kb-field{ margin-bottom:16px; }
+  .kb-select-wrap{ position:relative; }
+  .kb-select{ appearance:none; padding-right:36px; }
+  .kb-caret{ position:absolute; right:12px; top:50%; transform:translateY(-50%); color:#8a93a0; }
+  .kb-avatar{ width:36px; height:36px; border-radius:50%; background:#cbd5e1; margin-right:10px; }
+  .kb-foot{ padding:18px 20px 20px; }
+  .kb-primary{ width:100%; height:48px; border-radius:12px; background:#c6f0d5; color:#0a3; font-weight:700; border:1px solid #afe6c3; }
+
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#1e1f22; --subtle:#17181a; --text:#e6e7e9; --muted:#9aa4af; --border:#2a2d31; --hover:#232529; --active:#1d2a3a; --btn-bg:#1f2125; --btn-border:#2a2d31; --pill:#20242a; }
+    .dot{ background:#222428; color:#a2aab4; }
+    .big-icon{ background:#1f2a3a; color:#82aaff; }
+    .icon-btn{ background:#1e2024; }
+    .kb-close{ background:#1e2024; }
+  }
+
+  /* 通用图标大小（覆盖） */
+  .icon{ width:18px; height:18px; color:#63707b; }
+</style>
+</head>
+<body>
+  <!-- 复选框控制器：点击菜单里的“知识库”打开/关闭 -->
+  <input id="kb-toggle" type="checkbox" />
+
+  <div class="kb-modal" aria-hidden="true">
+    <div class="kb-dialog" role="dialog" aria-modal="true" aria-labelledby="kb-title">
+      <div class="kb-head">
+        <div id="kb-title" class="kb-title">新建知识库</div>
+        <label for="kb-toggle" class="kb-close" aria-label="关闭">✕</label>
+      </div>
+      <div class="kb-body">
+        <div class="kb-section-title">基本信息</div>
+        <div class="kb-field">
+          <div class="kb-row">
+            <div class="kb-icon">📘</div>
+            <input class="kb-input" type="text" placeholder="知识库名称" />
+          </div>
+        </div>
+        <div class="kb-field">
+          <textarea class="kb-textarea" placeholder="知识库简介（选填）"></textarea>
+        </div>
+        <div class="kb-section-title">新建至</div>
+        <div class="kb-row">
+          <div class="kb-avatar" aria-hidden="true"></div>
+          <div class="kb-select-wrap" style="flex:1">
+            <select class="kb-select">
+              <option selected>揪浅</option>
+              <option>个人</option>
+              <option>团队 A</option>
+            </select>
+            <span class="kb-caret">▾</span>
+          </div>
+        </div>
+      </div>
+      <div class="kb-foot">
+        <button class="kb-primary" type="button">新 建</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app">
+    <aside class="rail" aria-hidden="true">
+      <div class="dot">🏠</div>
+      <div class="dot">📄</div>
+      <div class="dot">⭐</div>
+      <div class="dot">⚙️</div>
+    </aside>
+
+    <nav class="sidebar" aria-label="侧边栏">
+      <div class="topbar">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15 18l-6-6 6-6"/></svg>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h10l6 6v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
+        <div class="title">试题</div>
+        <div class="spacer"></div>
+        <div class="create-wrap">
+          <div class="create" title="新建">+</div>
+          <div class="create-menu" role="menu" aria-label="新建菜单">
+            <div class="cm-item"><span class="cm-ico doc">📄</span><span class="cm-text">文档</span><span class="cm-kbd">⌘ N</span></div>
+            <div class="cm-item"><span class="cm-ico sheet">📊</span><span class="cm-text">表格</span></div>
+            <div class="cm-item"><span class="cm-ico board">🖼️</span><span class="cm-text">画板</span></div>
+            <div class="cm-item"><span class="cm-ico db">🧩</span><span class="cm-text">数据表</span></div>
+            <div class="cm-sep"></div>
+            <label class="cm-item" for="kb-toggle"><span class="cm-ico doc">📘</span><span class="cm-text">知识库</span></label>
+            <div class="cm-sep"></div>
+            <div class="cm-item"><span class="cm-ico tpl">🧭</span><span class="cm-text">从模板新建…</span></div>
+            <div class="cm-item"><span class="cm-ico imp">⬅️</span><span class="cm-text">导入…</span></div>
+            <div class="cm-item"><span class="cm-ico ai">AI</span><span class="cm-text">AI 帮你写</span><span class="cm-dot"></span></div>
+            <div class="cm-sep"></div>
+            <div class="cm-item"><span class="cm-ico grp">📦</span><span class="cm-text">新建分组</span></div>
+            <div class="cm-item"><span class="cm-ico link">🔗</span><span class="cm-text">添加链接</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav">
+        <div class="home-pill" title="首页">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 10.5l9-7 9 7V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>
+        <div>首页</div>
+        </div>
+
+        <div class="section-title">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg>
+          <span>目录</span>
+        </div>
+
+        <div class="group"><span class="name">Qt 下载教程</span></div>
+        <div class="group" type="button"><span class="name">C#面试常见递归算法</span></div>
+        <div class="group" type="button"><span class="name">C#经典十大排序算法</span></div>
+        <div class="group" type="button"><span class="name">VScode中配置 C/C++ 环境</span></div>
+
+        <div class="group" title="C++ Primer第五版中文版习题上">
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 18l6-6-6-6"/></svg>
+          <div class="name">C++ Primer第五版中文版习题上</div>
+          <div class="act">
+            <div class="icon-btn" title="查看"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5c5 0 9 4.5 9 7s-4 7-9 7-9-4.5-9-7 4-7 9-7zm0 3a4 4 0 100 8 4 4 0 000-8z"/></svg></div>
+            <div class="icon-btn" title="新建"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 11V4h2v7h7v2h-7v7h-2v-7H4v-2z"/></svg></div>
+          </div>
+        </div>
+        <div class="subnav">
+          <div class="sub-item"><span class="bullet"></span><span class="name">基础 g++计算题</span></div>
+          <div class="sub-item"><span class="bullet"></span><span class="name">命令行运行C++</span></div>
+          <div class="sub-item"><span class="bullet"></span><span class="name">sqlList顺序表</span></div>
+        </div>
+
+        <div class="group"><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 18l6-6-6-6"/></svg><div class="name">第一个 C++ 程序</div></div>
+        <div class="subnav">
+          <div class="sub-item"><span class="bullet"></span><span class="name">基本类型和初始化</span></div>
+          <div class="sub-item"><span class="bullet"></span><span class="name">数组类型</span></div>
+        </div>
+      </div>
+    </nav>
+
+    <main class="content">
+      <div class="doc-card">
+        <div class="doc-row">
+          <div class="doc-left">
+            <div class="big-icon">📘</div>
+            <div>
+              <div class="title-wrap"><div class="title">试题</div></div>
+              <div class="stats">
+                <div class="stat">48 <small>文档</small></div>
+                <div class="stat">48645 <small>字</small></div>
+                <svg class="info" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+              </div>
+            </div>
+          </div>
+          <div class="doc-right">
+            <button class="btn" type="button"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 17.27l-5.18 3.05 1.4-5.98L3 9.24l6.05-.52L12 3l2.95 5.72 6.05.52-5.22 5.1 1.4 5.98z"/></svg><span>收藏</span></button>
+            <button class="btn" type="button"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 12h4l-5 5 5 5H4l-4-4 4-4zm6 8h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H10v2h10v12H10v2z"/></svg><span>分享</span></button>
+            <button class="btn" type="button" aria-label="更多"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 7a2 2 0 110-4 2 2 0 010 4zm0 7a2 2 0 110-4 2 2 0 010 4zm0 7a2 2 0 110-4 2 2 0 010 4z"/></svg></button>
+            <div class="avatar" title="作者"></div>
+          </div>
+        </div>
+      </div>
+
+      <section class="welcome">
+        <h3>👋 欢迎来到知识库</h3>
+        <p>知识库就像书一样，让多篇文档结构化，方便知识的创作与沉淀</p>
+      </section>
+
+      <div class="doc-list">
+        <div class="list-row"><div class="caret"></div><div class="name">Qt 下载教程</div><div class="leader" style="flex:1"></div><div class="date">2024-06-10 16:00</div></div>
+        <div class="list-row"><div class="caret"></div><div class="name">C#面试常见递归算法</div><div class="leader" style="flex:1"></div><div class="date">2024-06-02 12:02</div></div>
+        <div class="list-row"><div class="caret"></div><div class="name">C#经典十大排序算法</div><div class="leader" style="flex:1"></div><div class="date">2024-06-03 13:58</div></div>
+        <div class="list-row"><div class="caret"></div><div class="name">VScode中配置 C/C++ 环境</div><div class="leader" style="flex:1"></div><div class="date">2024-06-23 00:09</div></div>
+        <div class="list-row"><div class="caret">▾</div><div class="name">C++ Primer第五版中文版习题上</div><div class="leader" style="flex:1"></div><div class="date">2023-11-02 21:15</div></div>
+        <div class="sub">
+          <div class="list-row"><div class="caret"></div><div class="name">基础 g++计算题</div><div class="leader" style="flex:1"></div><div class="date">2024-06-03 14:03</div></div>
+          <div class="list-row"><div class="caret"></div><div class="name">命令行运行C++</div><div class="leader" style="flex:1"></div><div class="date">2023-10-30 21:48</div></div>
+          <div class="list-row"><div class="caret"></div><div class="name">sqlList顺序表</div><div class="leader" style="flex:1"></div><div class="date">2024-06-02 11:48</div></div>
+        </div>
+        <div class="list-row"><div class="caret">▾</div><div class="name">第一个 C++ 程序</div><div class="leader" style="flex:1"></div><div class="date">2024-05-29 22:40</div></div>
+        <div class="sub">
+          <div class="list-row"><div class="caret"></div><div class="name">基本类型和初始化</div><div class="leader" style="flex:1"></div><div class="date">2023-05-21 08:51</div></div>
+          <div class="list-row"><div class="caret"></div><div class="name">数组类型</div><div class="leader" style="flex:1"></div><div class="date">2023-05-21 08:59</div></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
