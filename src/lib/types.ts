@@ -28,6 +28,8 @@ export interface KnowledgeBase {
   /** 单个 emoji 作为图标，符合 Vercel 克制的视觉语言（不引入彩色插画） */
   emoji: string;
   name: string;
+  /** 知识库简介（选填），新建弹窗中填写 */
+  intro?: string;
   /** 是否私有（展示一个锁标记） */
   locked: boolean;
   /** 是否收藏 */

@@ -10,6 +10,7 @@ interface KnowledgeBaseDetailProps {
   kb: KnowledgeBase;
   onBack: () => void;
   onToggleFav: (id: string) => void;
+  onDeleteKb: (id: string) => void;
   onCreateNode: (parentId: string | null) => void;
   onRenameNode: (id: string) => void;
   onDeleteNode: (id: string) => void;
@@ -29,6 +30,7 @@ export function KnowledgeBaseDetail({
   kb,
   onBack,
   onToggleFav,
+  onDeleteKb,
   onCreateNode,
   onRenameNode,
   onDeleteNode,
@@ -207,6 +209,14 @@ export function KnowledgeBaseDetail({
               <button className="btn" onClick={() => onCreateNode(null)}>
                 <Icon name="plus" size={15} />
                 新建文档
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => onDeleteKb(kb.id)}
+                title="删除知识库"
+              >
+                <Icon name="trash" size={15} />
+                删除
               </button>
             </div>
           </header>

@@ -11,10 +11,18 @@ generator client {
     output   = "../src/prisma.rs"
 }
 
-model Note {
+// 知识库：每行一个知识库。文档树（前端 TreeNode[]）序列化为 JSON 存入 tree 列，
+// 单表即可承载知识库及其内容的全部增删查改（脱胎于原 Note 模型）。
+model KnowledgeBase {
     id        String   @id @default(cuid())
-    title     String
-    content   String   @default("")
+    emoji     String   @default("📘")
+    name      String
+    intro     String   @default("")
+    locked    Boolean  @default(false)
+    fav       Boolean  @default(false)
+    scope     String   @default("mine") // "mine" | "shared"
+    tree      String   @default("[]") // JSON 序列化的 TreeNode[]
+    sort      Int      @default(0) // 侧边栏排序（越小越靠前）
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 }

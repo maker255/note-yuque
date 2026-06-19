@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { DragEvent } from "react";
 import type { KnowledgeBase, ViewId } from "../lib/types";
 import { Icon, type IconName } from "./Icon";
+import { CreateMenu } from "./CreateMenu";
 import type { Theme } from "../hooks/useTheme";
 
 interface NavDef {
@@ -28,7 +29,8 @@ interface SidebarProps {
   onOpenSearch: () => void;
   onToggleFav: (id: string) => void;
   onSelectKb: (id: string) => void;
-  onCreateKb: () => void;
+  onNewKb: () => void;
+  onStub: (label: string) => void;
   onReorder: (fromId: string, toId: string, after: boolean) => void;
   onToggleTheme: () => void;
   onCloseMobile: () => void;
@@ -45,7 +47,8 @@ export function Sidebar({
   onOpenSearch,
   onToggleFav,
   onSelectKb,
-  onCreateKb,
+  onNewKb,
+  onStub,
   onReorder,
   onToggleTheme,
   onCloseMobile,
@@ -134,9 +137,15 @@ export function Sidebar({
               <Icon name="chevron" size={12} />
             </button>
             <span className="section-label">知识库</span>
-            <button className="section-add" onClick={onCreateKb} title="新建知识库">
+            <CreateMenu
+              align="left"
+              triggerClassName="section-add"
+              title="新建"
+              onNewKb={onNewKb}
+              onStub={onStub}
+            >
               <Icon name="plus" size={14} />
-            </button>
+            </CreateMenu>
           </div>
 
           {!collapsed && (

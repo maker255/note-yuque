@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { Sidebar } from "./components/Sidebar";
 import { CommandPalette } from "./components/CommandPalette";
 import { KnowledgeView } from "./components/KnowledgeView";
 import { KnowledgeBaseDetail } from "./components/KnowledgeBaseDetail";
+import { CreateMenu } from "./components/CreateMenu";
+import { NewKbModal } from "./components/NewKbModal";
 import { Icon } from "./components/Icon";
 import { useTheme } from "./hooks/useTheme";
-import { EMOJI_POOL, SEED_KBS } from "./lib/data";
+import { SEED_KBS } from "./lib/data";
+import { createKb, deleteKb, listKbs, saveKb, updateKb } from "./lib/api";
 import {
   addChild,
   latestUpdated,
@@ -17,23 +20,71 @@ import {
 } from "./lib/tree";
 import type { DropPos, KnowledgeBase, NodeType, Scope, TreeNode, ViewId } from "./lib/types";
 
-// ⚠️ UI 设计阶段：知识库数据先在前端内存中维护并支持增删/排序/收藏，
-// 后续阶段再替换为 Tauri invoke + Prisma/SQLite 持久化 + REST API。
+// 知识库数据持久化在 SQLite（src-tauri）。前端在内存中维护一份镜像用于即时渲染，
+// 每次变更都「写穿」到后端（lib/api.ts）。纯浏览器 dev（无 Tauri）时回退到演示数据。
 function App() {
   const { theme, toggle } = useTheme();
 
-  const [kbs, setKbs] = useState<KnowledgeBase[]>(SEED_KBS);
+  const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewId>("home");
   const [scope, setScope] = useState<Scope>("mine");
   const [activeKbId, setActiveKbId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [newKbOpen, setNewKbOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // 移动端抽屉
   const [toast, setToast] = useState("");
+
+  // 持有最新 kbs 引用，供回调内读取并计算写穿目标（避免闭包过期）。
+  const kbsRef = useRef(kbs);
+  useEffect(() => {
+    kbsRef.current = kbs;
+  }, [kbs]);
 
   // 轻量 toast：2 秒后自动消失。
   const notify = useCallback((msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(""), 1900);
+  }, []);
+
+  // 写穿后端：失败仅告警（浏览器 dev 无 Tauri 时静默忽略）。
+  const persist = useCallback((run: () => Promise<unknown>) => {
+    run().catch((e) => console.warn("持久化失败", e));
+  }, []);
+
+  // 启动：从数据库加载；空库则用演示数据播种并持久化；非 Tauri 环境回退到内存数据。
+  const didInit = useRef(false);
+  useEffect(() => {
+    if (didInit.current) return; // 防止 StrictMode 下重复播种
+    didInit.current = true;
+    (async () => {
+      try {
+        let list = await listKbs();
+        if (list.length === 0) {
+          // 首次运行：逐个一次性创建（含整棵树/收藏/私有），避免两步写入丢数据。
+          for (let i = 0; i < SEED_KBS.length; i++) {
+            const s = SEED_KBS[i];
+            await createKb({
+              emoji: s.emoji,
+              name: s.name,
+              intro: s.intro,
+              scope: s.scope,
+              sort: i,
+              tree: s.tree,
+              fav: s.fav,
+              locked: s.locked,
+            });
+          }
+          list = await listKbs();
+        }
+        setKbs(list);
+      } catch (e) {
+        console.warn("加载知识库失败，回退到演示数据（非 Tauri 环境？）", e);
+        setKbs(SEED_KBS);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   // 全局快捷键：⌘/Ctrl+K 唤起搜索，⌘/Ctrl+B 切换主题。
@@ -77,68 +128,93 @@ function App() {
 
   const toggleFav = useCallback(
     (id: string) => {
-      setKbs((prev) => prev.map((k) => (k.id === id ? { ...k, fav: !k.fav } : k)));
-      const kb = kbs.find((k) => k.id === id);
-      if (kb) notify(kb.fav ? `已取消收藏：${kb.name}` : `已收藏：${kb.name}`);
+      const kb = kbsRef.current.find((k) => k.id === id);
+      if (!kb) return;
+      const fav = !kb.fav;
+      setKbs((prev) => prev.map((k) => (k.id === id ? { ...k, fav } : k)));
+      persist(() => updateKb(id, { fav }));
+      notify(fav ? `已收藏：${kb.name}` : `已取消收藏：${kb.name}`);
     },
-    [kbs, notify],
+    [notify, persist],
   );
 
-  // 拖拽排序：把 fromId 移动到 toId 之前/之后（侧边栏知识库列表）。
+  // 拖拽排序：把 fromId 移动到 toId 之前/之后（侧边栏知识库列表），并持久化每行 sort。
   const reorder = useCallback(
     (fromId: string, toId: string, after: boolean) => {
-      setKbs((prev) => {
-        const next = [...prev];
-        const from = next.findIndex((k) => k.id === fromId);
-        if (from < 0) return prev;
-        const [moved] = next.splice(from, 1);
-        let to = next.findIndex((k) => k.id === toId);
-        if (to < 0) return prev;
-        if (after) to += 1;
-        next.splice(to, 0, moved);
-        return next;
-      });
+      const cur = [...kbsRef.current];
+      const from = cur.findIndex((k) => k.id === fromId);
+      if (from < 0) return;
+      const [moved] = cur.splice(from, 1);
+      let to = cur.findIndex((k) => k.id === toId);
+      if (to < 0) return;
+      if (after) to += 1;
+      cur.splice(to, 0, moved);
+      setKbs(cur);
+      cur.forEach((k, i) => persist(() => updateKb(k.id, { sort: i })));
       notify("已重新排序");
+    },
+    [notify, persist],
+  );
+
+  // 打开新建知识库弹窗。
+  const openNewKb = useCallback(() => setNewKbOpen(true), []);
+
+  // 弹窗提交：创建并持久化知识库。
+  const handleCreateKb = useCallback(
+    async (input: { emoji: string; name: string; intro: string; scope: Scope }) => {
+      setNewKbOpen(false);
+      try {
+        const created = await createKb({ ...input, sort: kbsRef.current.length });
+        setKbs((prev) => [...prev, created]);
+        notify(`已创建：${input.name}`);
+      } catch (e) {
+        console.warn("创建知识库失败", e);
+        notify("创建失败");
+      }
     },
     [notify],
   );
 
-  const createKb = useCallback(() => {
-    const name = window.prompt("新建知识库名称：", "未命名知识库");
-    if (!name) return;
-    setKbs((prev) => [
-      ...prev,
-      {
-        id: `kb-${Date.now()}`,
-        emoji: EMOJI_POOL[prev.length % EMOJI_POOL.length],
-        name,
-        locked: false,
-        fav: false,
-        scope: view === "home" || view === "recent" ? scope : "mine",
-        tree: [],
-      },
-    ]);
-    notify(`已创建：${name}`);
-  }, [view, scope, notify]);
-
-  // 点击知识库 → 进入详情页（无限级知识树）。
-  const selectKb = useCallback(
-    (id: string) => {
-      setActiveKbId(id);
-      setSidebarOpen(false);
+  // 删除整个知识库。
+  const removeKb = useCallback(
+    async (id: string) => {
+      const kb = kbsRef.current.find((k) => k.id === id);
+      if (!kb) return;
+      if (!window.confirm(`删除知识库「${kb.name}」及其全部内容？此操作不可撤销。`)) return;
+      setKbs((prev) => prev.filter((k) => k.id !== id));
+      if (activeKbId === id) setActiveKbId(null);
+      try {
+        await deleteKb(id);
+        notify(`已删除知识库：${kb.name}`);
+      } catch (e) {
+        console.warn("删除知识库失败", e);
+        notify("删除失败");
+      }
     },
-    [],
+    [activeKbId, notify],
   );
 
-  // —— 详情页内的知识树增删改查 —— 统一在 activeKb 的 tree 上做不可变更新。
+  // 占位菜单项（表格/画板/导入…）：仅提示，暂未实现。
+  const stub = useCallback((label: string) => notify(`${label}（示例，暂未实现）`), [notify]);
+
+  // 点击知识库 → 进入详情页（无限级知识树）。
+  const selectKb = useCallback((id: string) => {
+    setActiveKbId(id);
+    setSidebarOpen(false);
+  }, []);
+
+  // —— 详情页内的知识树增删改查 —— 在 activeKb 的 tree 上做不可变更新并写穿后端。
   const updateActiveTree = useCallback(
     (fn: (tree: TreeNode[]) => TreeNode[]) => {
       if (!activeKbId) return;
-      setKbs((prev) =>
-        prev.map((k) => (k.id === activeKbId ? { ...k, tree: fn(k.tree) } : k)),
+      const next = kbsRef.current.map((k) =>
+        k.id === activeKbId ? { ...k, tree: fn(k.tree) } : k,
       );
+      setKbs(next);
+      const target = next.find((k) => k.id === activeKbId);
+      if (target) persist(() => saveKb(target));
     },
-    [activeKbId],
+    [activeKbId, persist],
   );
 
   const createNode = useCallback(
@@ -213,7 +289,8 @@ function App() {
         onOpenSearch={() => setPaletteOpen(true)}
         onToggleFav={toggleFav}
         onSelectKb={selectKb}
-        onCreateKb={createKb}
+        onNewKb={openNewKb}
+        onStub={stub}
         onReorder={reorder}
         onToggleTheme={toggle}
         onCloseMobile={() => setSidebarOpen(false)}
@@ -247,22 +324,18 @@ function App() {
             )}
           </nav>
           <div className="topbar-actions">
-            {activeKb ? (
-              <button className="btn primary" onClick={() => createNode(null)}>
-                <Icon name="plus" size={15} />
-                新建文档
-              </button>
-            ) : (
-              <>
-                <button className="btn" onClick={() => notify("新建文档（示例）")}>
-                  新建文档
-                </button>
-                <button className="btn primary" onClick={createKb}>
-                  <Icon name="plus" size={15} />
-                  新建知识库
-                </button>
-              </>
-            )}
+            <CreateMenu
+              align="right"
+              canCreateDoc={!!activeKb}
+              triggerClassName="btn primary"
+              title="新建"
+              onNewKb={openNewKb}
+              onCreateDoc={() => createNode(null)}
+              onStub={stub}
+            >
+              <Icon name="plus" size={15} />
+              新建
+            </CreateMenu>
           </div>
         </header>
 
@@ -271,6 +344,7 @@ function App() {
             kb={activeKb}
             onBack={backToList}
             onToggleFav={toggleFav}
+            onDeleteKb={removeKb}
             onCreateNode={createNode}
             onRenameNode={renameNode}
             onDeleteNode={deleteNode}
@@ -283,14 +357,18 @@ function App() {
           />
         ) : (
           <div className="scrollarea">
-            <KnowledgeView
-              view={view}
-              scope={scope}
-              kbs={visibleKbs}
-              onScope={setScope}
-              onToggleFav={toggleFav}
-              onSelectKb={selectKb}
-            />
+            {loading ? (
+              <div className="loading-state">加载中…</div>
+            ) : (
+              <KnowledgeView
+                view={view}
+                scope={scope}
+                kbs={visibleKbs}
+                onScope={setScope}
+                onToggleFav={toggleFav}
+                onSelectKb={selectKb}
+              />
+            )}
           </div>
         )}
       </main>
@@ -306,8 +384,15 @@ function App() {
           const t = kb ? findTitle(kb.tree, docId) : null;
           if (t) notify(`打开文档：${t}`);
         }}
-        onCreateKb={createKb}
+        onCreateKb={openNewKb}
         onToggleTheme={toggle}
+      />
+
+      <NewKbModal
+        open={newKbOpen}
+        defaultScope={view === "home" || view === "recent" ? scope : "mine"}
+        onClose={() => setNewKbOpen(false)}
+        onCreate={handleCreateKb}
       />
 
       <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
