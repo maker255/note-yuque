@@ -14,8 +14,19 @@
               <span class="cm-text">新建笔记</span>
               <span class="cm-kbd">⌘ N</span>
             </div>
+            <div class="cm-divider"></div>
+            <div class="cm-item" @click="exportBackup">
+              <span class="cm-ico">⬆</span>
+              <span class="cm-text">导出备份</span>
+            </div>
+            <div class="cm-item" @click="importFileInput?.click()">
+              <span class="cm-ico">⬇</span>
+              <span class="cm-text">导入备份</span>
+            </div>
           </div>
         </div>
+        <div class="icon-btn settings-btn" title="图片存储设置" @click="openSettings">⚙</div>
+        <input ref="importFileInput" type="file" accept=".nbk" style="display:none" @change="importBackup" />
       </div>
 
       <div class="nav">
@@ -71,6 +82,52 @@
       </div>
     </aside>
 
+    <!-- Settings modal -->
+    <div v-if="showSettings" class="modal-backdrop" @click.self="showSettings = false">
+      <div class="modal" role="dialog" aria-label="图片存储设置">
+        <div class="modal-header">
+          <span class="modal-title">图片存储设置</span>
+          <button class="modal-close" @click="showSettings = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label class="field-label">存储模式</label>
+            <div class="radio-group">
+              <label class="radio-item">
+                <input type="radio" v-model="imgConfig.imageMode" value="local" />
+                <span>本地存储</span>
+              </label>
+              <label class="radio-item">
+                <input type="radio" v-model="imgConfig.imageMode" value="remote" />
+                <span>远程存储</span>
+              </label>
+              <label class="radio-item">
+                <input type="radio" v-model="imgConfig.imageMode" value="remote_fallback" />
+                <span>远程优先，失败切换本地</span>
+              </label>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">本地存储目录</label>
+            <input class="field-input" v-model="imgConfig.imageLocalDir" placeholder="绝对路径，例如 /data/uploads" />
+            <span class="field-hint">留空则使用默认目录 ./uploads</span>
+          </div>
+          <div class="field" :class="{ 'field-disabled': imgConfig.imageMode === 'local' }">
+            <label class="field-label">远程上传接口</label>
+            <input class="field-input" v-model="imgConfig.imageRemoteUrl"
+              :disabled="imgConfig.imageMode === 'local'"
+              placeholder="https://example.com/api/upload" />
+            <span class="field-hint">POST FormData (file 字段)，响应 {data:{url,size,filename}}</span>
+          </div>
+          <div v-if="settingsMsg" class="settings-msg" :class="{ 'settings-msg-err': settingsMsgErr }">{{ settingsMsg }}</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="showSettings = false">取消</button>
+          <button class="btn-primary" @click="saveSettings">保存</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Editor pane -->
     <main class="editor-pane" @keydown.ctrl.s.prevent="saveNote" @keydown.meta.s.prevent="saveNote">
       <template v-if="currentNote">
@@ -104,6 +161,7 @@ import { YuqueRichText } from 'yuque-rich-text'
 import type { IEditorRef } from 'yuque-rich-text'
 
 const API = 'http://localhost:3001/api/notes'
+const UPLOAD_API = 'http://localhost:3001/api/upload'
 
 interface Note {
   id: number
@@ -119,7 +177,42 @@ const editorRef = ref<IEditorRef>()
 const saveStatus = ref('')
 const isDirty = ref(false)
 const expandedIds = reactive(new Set<number>())
+const importFileInput = ref<HTMLInputElement>()
 let pendingContent: string | null = null
+
+// image storage settings
+const showSettings = ref(false)
+const settingsMsg = ref('')
+const settingsMsgErr = ref(false)
+const imgConfig = ref({ imageMode: 'local', imageLocalDir: '', imageRemoteUrl: '' })
+
+async function openSettings() {
+  try {
+    const res = await fetch(`${UPLOAD_API}/config`)
+    imgConfig.value = await res.json()
+  } catch {
+    imgConfig.value = { imageMode: 'local', imageLocalDir: '', imageRemoteUrl: '' }
+  }
+  settingsMsg.value = ''
+  showSettings.value = true
+}
+
+async function saveSettings() {
+  try {
+    const res = await fetch(`${UPLOAD_API}/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(imgConfig.value),
+    })
+    if (!res.ok) throw new Error('failed')
+    settingsMsg.value = '保存成功'
+    settingsMsgErr.value = false
+    setTimeout(() => { showSettings.value = false; settingsMsg.value = '' }, 800)
+  } catch {
+    settingsMsg.value = '保存失败，请检查服务是否运行'
+    settingsMsgErr.value = true
+  }
+}
 
 const topLevel = computed(() => notes.value.filter(n => n.parent_id === null))
 function childrenOf(id: number) {
@@ -215,6 +308,35 @@ async function saveNote() {
 
   localStorage.setItem('lastNoteId', String(id))
   setTimeout(() => window.location.reload(), 2000)
+}
+
+async function exportBackup() {
+  const res = await fetch('http://localhost:3001/api/backup/export')
+  const text = await res.text()
+  const blob = new Blob([text], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `notebook-${Date.now()}.nbk`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function importBackup(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const text = await file.text()
+  ;(e.target as HTMLInputElement).value = ''
+  if (!confirm(`导入备份将向现有笔记追加数据（不删除已有内容），确认继续？`)) return
+  const res = await fetch('http://localhost:3001/api/backup/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: text }),
+  })
+  const json = await res.json()
+  if (!res.ok) { alert(`导入失败：${json.error}`); return }
+  alert(`成功导入 ${json.imported} 篇笔记`)
+  await loadNotes()
 }
 
 onMounted(async () => {
@@ -358,6 +480,7 @@ body {
   cursor: pointer;
   color: var(--ink);
 }
+.cm-divider { height: 1px; background: var(--hairline); margin: 4px 6px; }
 .cm-item:hover { background: var(--canvas-soft2); }
 .cm-ico { font-size: 14px; }
 .cm-text { flex: 1; font-size: 13px; font-weight: 400; }
@@ -531,7 +654,7 @@ body {
 }
 .editor-header {
   display: flex; align-items: center;
-  padding: 12px 24px 10px;
+  padding: 12px 24px 15px;
   background: var(--canvas);
   border-bottom: 1px solid var(--hairline);
   gap: 12px;
@@ -573,6 +696,87 @@ body {
   align-items: center; justify-content: center;
   color: var(--mute); font-size: 14px;
 }
+
+.settings-btn {
+  width: 28px; height: 28px;
+  font-size: 14px;
+  color: var(--mute);
+  flex-shrink: 0;
+}
+.settings-btn:hover { color: var(--ink); background: var(--canvas-soft2); }
+
+/* modal */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-5);
+  width: 460px; max-width: 95vw;
+  display: flex; flex-direction: column;
+}
+.modal-header {
+  display: flex; align-items: center;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--hairline);
+  gap: 8px;
+}
+.modal-title { flex: 1; font-size: 15px; font-weight: 600; color: var(--ink); }
+.modal-close {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--mute); font-size: 14px; padding: 2px 6px;
+  border-radius: var(--r-sm);
+}
+.modal-close:hover { background: var(--canvas-soft2); color: var(--ink); }
+.modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+.modal-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--hairline);
+}
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-disabled { opacity: .45; pointer-events: none; }
+.field-label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.field-hint { font-size: 11px; color: var(--mute); font-family: var(--font-mono); }
+.field-input {
+  height: 32px; padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font-size: 13px; font-family: var(--font);
+  color: var(--ink); background: var(--canvas);
+  outline: none;
+}
+.field-input:focus { border-color: var(--hairline-strong); }
+.radio-group { display: flex; flex-direction: column; gap: 8px; }
+.radio-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--body); cursor: pointer;
+}
+.radio-item input { accent-color: var(--ink); }
+.settings-msg {
+  font-size: 12px; color: #3a8a3a; background: #edf7ed;
+  padding: 6px 10px; border-radius: var(--r-sm);
+}
+.settings-msg.settings-msg-err { color: #c0392b; background: #fdecea; }
+.btn-cancel {
+  height: 30px; padding: 0 14px;
+  border: 1px solid var(--hairline); border-radius: var(--r-pill);
+  background: var(--canvas); color: var(--body);
+  font-size: 13px; font-family: var(--font); cursor: pointer;
+}
+.btn-cancel:hover { background: var(--canvas-soft2); }
+.btn-primary {
+  height: 30px; padding: 0 14px;
+  border: none; border-radius: var(--r-pill);
+  background: var(--ink); color: #fff;
+  font-size: 13px; font-weight: 500; font-family: var(--font); cursor: pointer;
+}
+.btn-primary:hover { opacity: .82; }
 
 @media (prefers-color-scheme: dark) {
   :root {

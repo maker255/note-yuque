@@ -68,6 +68,12 @@ export default ({mode})=>{
             ],
           },
         },
+    server: {
+      proxy: {
+        '/api/upload': 'http://localhost:3001',
+        '/uploads':    'http://localhost:3001',
+      },
+    },
     // publicDir: IS_DEMO ? 'public' : false,
   })
 }

@@ -119,12 +119,12 @@ export default defineComponent({
 							return doc.querySelector(".ne-editor-wrap");
 						},
 						image: {
-							uploadFileURL: "/api/upload/image",
-							crawlURL: "/api/upload/image",
+							uploadFileURL: "http://localhost:3001/api/upload/image",
+							crawlURL: "http://localhost:3001/api/upload/crawl",
 							createUploadPromise: props.uploadImage,
 						},
 						video: {
-							uploadFileURL: "/api/upload/video",
+							uploadFileURL: "http://localhost:3001/api/upload/video",
 							createUploadPromise: props.uploadVideo,
 						},
 						placeholder: "输入内容...",
