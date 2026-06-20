@@ -1,10 +1,51 @@
-import { ref, watch, h, onMounted, onUnmounted, defineComponent } from "vue";
+import { ref, watch, h, onMounted, onUnmounted, defineComponent, PropType } from "vue";
 import { templateHtml } from "./template";
 import loadLakeEditor from "./load";
 import { InjectEditorPlugin } from "./editor-plugin";
 import { slash } from "./slash-options";
 
 const blockquoteID = "yqextensionblockquoteid";
+
+const BACKEND_BASE = "http://localhost:3001";
+
+type UploadResult = { url: string; size: number; filename: string };
+
+async function defaultUploadImage({ data }: { data: File | string }): Promise<UploadResult> {
+	if (typeof data === "string") {
+		const r = await fetch(`${BACKEND_BASE}/api/upload/crawl`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ url: data }),
+		});
+		if (!r.ok) throw new Error(`crawl failed: ${r.status}`);
+		const json = await r.json();
+		const info = json.data || json;
+		if (!info?.url) throw new Error("crawl response missing url");
+		return { url: info.url, size: info.size || 0, filename: info.filename || "" };
+	}
+	const form = new FormData();
+	form.append("file", data);
+	const r = await fetch(`${BACKEND_BASE}/api/upload/image`, { method: "POST", body: form });
+	if (!r.ok) throw new Error(`upload failed: ${r.status}`);
+	const json = await r.json();
+	const info = json.data || json;
+	if (!info?.url) throw new Error("upload response missing url");
+	return { url: info.url, size: info.size || data.size, filename: info.filename || data.name };
+}
+
+async function defaultUploadVideo({ data }: { data: File | string }): Promise<UploadResult> {
+	if (typeof data === "string") {
+		throw new Error("video URL crawl not supported");
+	}
+	const form = new FormData();
+	form.append("file", data);
+	const r = await fetch(`${BACKEND_BASE}/api/upload/image`, { method: "POST", body: form });
+	if (!r.ok) throw new Error(`video upload failed: ${r.status}`);
+	const json = await r.json();
+	const info = json.data || json;
+	if (!info?.url) throw new Error("video upload response missing url");
+	return { url: info.url, size: info.size || data.size, filename: info.filename || data.name };
+}
 export interface EditorProps {
 	value: string;
 	children?: any;
@@ -91,6 +132,16 @@ export default defineComponent({
 			default: false,
 			required: false,
 		},
+		uploadImage: {
+			type: Function as PropType<EditorProps["uploadImage"]>,
+			required: false,
+			default: undefined,
+		},
+		uploadVideo: {
+			type: Function as PropType<EditorProps["uploadVideo"]>,
+			required: false,
+			default: undefined,
+		},
 	},
 	emits: ["onChange", "onLoad", "onSave", "uploadImage"],
 	setup(props: EditorProps, { emit, expose }) {
@@ -119,13 +170,13 @@ export default defineComponent({
 							return doc.querySelector(".ne-editor-wrap");
 						},
 						image: {
-							uploadFileURL: "http://localhost:3001/api/upload/image",
-							crawlURL: "http://localhost:3001/api/upload/crawl",
-							createUploadPromise: props.uploadImage,
+							uploadFileURL: `${BACKEND_BASE}/api/upload/image`,
+							crawlURL: `${BACKEND_BASE}/api/upload/crawl`,
+							createUploadPromise: props.uploadImage || defaultUploadImage,
 						},
 						video: {
-							uploadFileURL: "http://localhost:3001/api/upload/video",
-							createUploadPromise: props.uploadVideo,
+							uploadFileURL: `${BACKEND_BASE}/api/upload/image`,
+							createUploadPromise: props.uploadVideo || defaultUploadVideo,
 						},
 						placeholder: "输入内容...",
 						defaultFontsize: 14,

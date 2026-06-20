@@ -6,10 +6,11 @@
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15 18l-6-6 6-6"/></svg>
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h10l6 6v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
         <div class="topbar-title">笔记本</div>
+        <div class="icon-btn quick-add" title="新建笔记 (⌘N)" @click="createNote()">＋</div>
         <div class="create-wrap">
           <div class="create-btn" title="新建">＋ 新建</div>
           <div class="create-menu" role="menu">
-            <div class="cm-item" @click="createNote">
+            <div class="cm-item" @click="createNote()">
               <span class="cm-ico">📄</span>
               <span class="cm-text">新建笔记</span>
               <span class="cm-kbd">⌘ N</span>
@@ -58,6 +59,7 @@
               <span v-else class="chev-placeholder"></span>
               <div class="group-name">{{ note.title || '无标题笔记' }}</div>
               <div class="act">
+                <div class="icon-btn add-sub" title="新建子笔记" @click.stop="createNote(note.id)">＋</div>
                 <div class="icon-btn" title="删除" @click.stop="deleteNote(note.id)">✕</div>
               </div>
             </div>
@@ -156,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { YuqueRichText } from 'yuque-rich-text'
 import type { IEditorRef } from 'yuque-rich-text'
 
@@ -248,14 +250,15 @@ async function seedNotes() {
   })
 }
 
-async function createNote() {
+async function createNote(parentId: number | null = null) {
   const res = await fetch(API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: '无标题笔记', content: '' }),
+    body: JSON.stringify({ title: '无标题笔记', content: '', parent_id: parentId }),
   })
   const { id } = await res.json()
   await loadNotes()
+  if (parentId !== null) expandedIds.add(parentId)
   const created = notes.value.find(n => n.id === id)
   if (created) selectNote(created)
 }
@@ -354,7 +357,19 @@ onMounted(async () => {
     if (note) selectNote(note)
     localStorage.removeItem('lastNoteId')
   }
+  window.addEventListener('keydown', onGlobalKeydown)
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalKeydown)
+})
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'n' || e.key === 'N')) {
+    e.preventDefault()
+    createNote()
+  }
+}
 </script>
 
 <style>
@@ -704,6 +719,16 @@ body {
   flex-shrink: 0;
 }
 .settings-btn:hover { color: var(--ink); background: var(--canvas-soft2); }
+
+.quick-add {
+  width: 28px; height: 28px;
+  font-size: 16px;
+  color: var(--mute);
+  flex-shrink: 0;
+}
+.quick-add:hover { color: var(--ink); background: var(--canvas-soft2); }
+
+.icon-btn.add-sub:hover { color: var(--ink); background: var(--canvas-soft2); }
 
 /* modal */
 .modal-backdrop {

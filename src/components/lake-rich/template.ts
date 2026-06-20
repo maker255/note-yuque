@@ -30,7 +30,10 @@ export const templateHtml = `
     #root {
       flex: 1;
       overflow: hidden;
-      height: 0; /* 配合 flex:1 强制容器有明确高度 */
+      height: 0;
+    }
+    .ne-ui.lakex-default-theme {
+      position: fixed;
     }
     #child {
       display: flex;
