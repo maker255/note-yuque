@@ -82,6 +82,18 @@ export const templateHtml = `
       height: 100%; /* Lake 原生滚动容器：固定高度，内部滚动 */
       overflow-y: auto;
     }
+    /* 代码块工具栏不再随长代码隐藏：改用「块内滚动」而非 sticky 吸顶。
+       背景：本应用编辑器跑在 iframe + WebKitGTK 内核里，position:sticky 被夹在 ne-card 自定义元素链
+       内时定位不可靠 —— 长代码一旦滚过，工具栏（语言/复制/折叠）仍会被卷走。曾尝试 sticky+解除
+       .ne-card-container 的 overflow:hidden，治标不治本，且解除 overflow 还会丢掉卡片圆角裁剪。
+       现方案：给代码区（CodeMirror 滚动体，本就 overflow:scroll）设视口相对的高度上限，超长代码在
+       代码块「内部」滚动，工具栏永远留在代码块顶部、不被卷走。这正是 Lake 自带 .ne-codeblock-height-limit
+       的机制（其 .CodeMirror-scroll{max-height} 仅在用户手动开启「限高」时生效，且上限高达 11808px），
+       这里把它常态化到一个合理高度。CM5(.CodeMirror-scroll)/CM6(.cm-scroller) 两种内核都覆盖。 */
+    .ne-editor .ne-codeblock .CodeMirror-scroll,
+    .ne-editor .ne-codeblock .cm-scroller {
+      max-height: 60vh;
+    }
     /* 暗色模式：跟随宿主 <html data-theme>（由 LakeEditor.tsx 同步注入）。
        闭源内核仅对「书写主表面」做适配：背景调暗 + 正文转亮；
        悬浮工具栏 / 弹层等瞬时元素仍沿用内核默认浅色。 */
