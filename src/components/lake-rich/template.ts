@@ -10,6 +10,10 @@ export const templateHtml = `
   <link rel="stylesheet" type="text/css" href="https://gw.alipayobjects.com/render/p/yuyan_npm/@alipay_lakex-doc/1.71.0/umd/doc.css"/>
   <link rel="stylesheet" type="text/css" href="https://gw.alipayobjects.com/os/lib/antd/4.24.13/dist/antd.css"/>
   <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
     body {
       display: flex;
       flex-direction: column;
@@ -22,9 +26,11 @@ export const templateHtml = `
     #toolbar {
       flex: 1;
     }
+    /* 固定高度容器：让 Lake 编辑器的工具栏基于容器定位，而非 viewport */
     #root {
       flex: 1;
       overflow: hidden;
+      height: 0; /* 配合 flex:1 强制容器有明确高度 */
     }
     #child {
       display: flex;
@@ -56,7 +62,7 @@ export const templateHtml = `
       height: 100%;
     }
     .ne-layout-mode-fixed .ne-engine, .ne-layout-mode-adapt .ne-engine {
-      padding: 60px 24px 0;
+      padding: 20px 24px 200px;
       min-height: calc(100vh - 10px)
     }
     .ne-layout-mode-fixed .ne-editor-wrap-content {
@@ -73,13 +79,6 @@ export const templateHtml = `
       overscroll-behavior: contain;
       overflow-y: auto;
       height: 100%;
-    }
-
-    /* 固定浮动工具栏，不随内容滚动 */
-    .ne-ui-toolbar.lake-diagram-prevent-mouse-select {
-      position: fixed !important;
-      z-index: 9999;
-      background-color: #fff;
     }
   </style>
 </head>
