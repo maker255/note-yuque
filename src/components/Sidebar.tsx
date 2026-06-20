@@ -30,6 +30,7 @@ interface SidebarProps {
   onToggleFav: (id: string) => void;
   onSelectKb: (id: string) => void;
   onNewKb: () => void;
+  onCreateDoc: () => void;
   onStub: (label: string) => void;
   onReorder: (fromId: string, toId: string, after: boolean) => void;
   onToggleTheme: () => void;
@@ -48,6 +49,7 @@ export function Sidebar({
   onToggleFav,
   onSelectKb,
   onNewKb,
+  onCreateDoc,
   onStub,
   onReorder,
   onToggleTheme,
@@ -139,9 +141,11 @@ export function Sidebar({
             <span className="section-label">知识库</span>
             <CreateMenu
               align="left"
+              canCreateDoc
               triggerClassName="section-add"
               title="新建"
               onNewKb={onNewKb}
+              onCreateDoc={onCreateDoc}
               onStub={onStub}
             >
               <Icon name="plus" size={14} />

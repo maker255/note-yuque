@@ -1016,12 +1016,8 @@ kbd {
   display: none;
 }
 
-/* 文章列表隐藏后，在概览区左上角浮出“显示”入口 */
+/* 文章列表隐藏后的“显示”入口 */
 .kbd-tree-reveal {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 5;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1039,6 +1035,11 @@ kbd {
 .kbd-tree-reveal:hover {
   color: var(--text);
   background: var(--bg-hover);
+}
+/* 概览区显示入口所在的一行，垫出与下方 hero 的间距 */
+.kbd-reveal-bar {
+  max-width: 960px;
+  margin: 0 auto 16px;
 }
 .kbd-tree-hd {
   display: flex;
@@ -1903,4 +1904,136 @@ kbd {
 .btn.primary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* ---------------- 「新建文档到…」选择知识库弹窗 ---------------- */
+.pickkb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.pickkb-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+}
+.pickkb-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+.pickkb-emoji {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.pickkb-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pickkb-lock {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.pickkb-scope {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.pickkb-go {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.pickkb-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ════════════════════════════
+   文档编辑器（语雀 Lake）
+════════════════════════════ */
+.doc-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.doc-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.doc-editor-ico {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.doc-editor-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-editor-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.doc-editor-status.unsaved {
+  color: #f5a623;
+}
+.doc-editor-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden; /* 滚动交给 iframe 内部的 Lake scrollNode (.ne-editor-wrap) */
+}
+.lake-editor-wrap {
+  position: relative;
+  height: 100%;
+}
+.lake-editor {
+  display: block;
+  width: 100%;
+  /* 固定高度：填满 .lake-editor-wrap，内部由 Lake 自身滚动（流程图工具栏吸附的前提） */
+  height: 100%;
+  border: none;
+  background: transparent;
+}
+.lake-editor-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--bg);
 }

@@ -6,6 +6,7 @@ import { KnowledgeView } from "./components/KnowledgeView";
 import { KnowledgeBaseDetail } from "./components/KnowledgeBaseDetail";
 import { CreateMenu } from "./components/CreateMenu";
 import { NewKbModal } from "./components/NewKbModal";
+import { PickKbModal } from "./components/PickKbModal";
 import { Icon } from "./components/Icon";
 import { useTheme } from "./hooks/useTheme";
 import { SEED_KBS } from "./lib/data";
@@ -20,6 +21,9 @@ import {
 } from "./lib/tree";
 import type { DropPos, KnowledgeBase, NodeType, Scope, TreeNode, ViewId } from "./lib/types";
 
+// 生成稳定且不易碰撞的节点 id（同一毫秒内多次新建也不冲突）。
+const uid = () => `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
 // 知识库数据持久化在 SQLite（src-tauri）。前端在内存中维护一份镜像用于即时渲染，
 // 每次变更都「写穿」到后端（lib/api.ts）。纯浏览器 dev（无 Tauri）时回退到演示数据。
 function App() {
@@ -32,8 +36,13 @@ function App() {
   const [activeKbId, setActiveKbId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newKbOpen, setNewKbOpen] = useState(false);
+  const [pickKbOpen, setPickKbOpen] = useState(false); // 「新建文档到…」选择知识库弹窗
+  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null); // 新建后待在编辑器中打开的文档
   const [sidebarOpen, setSidebarOpen] = useState(false); // 移动端抽屉
   const [toast, setToast] = useState("");
+
+  // 标记：本次新建知识库后应顺带新建一篇文档（来自「新建文档但尚无知识库」的流程）。
+  const createDocAfterKbRef = useRef(false);
 
   // 持有最新 kbs 引用，供回调内读取并计算写穿目标（避免闭包过期）。
   const kbsRef = useRef(kbs);
@@ -159,22 +168,6 @@ function App() {
   // 打开新建知识库弹窗。
   const openNewKb = useCallback(() => setNewKbOpen(true), []);
 
-  // 弹窗提交：创建并持久化知识库。
-  const handleCreateKb = useCallback(
-    async (input: { emoji: string; name: string; intro: string; scope: Scope }) => {
-      setNewKbOpen(false);
-      try {
-        const created = await createKb({ ...input, sort: kbsRef.current.length });
-        setKbs((prev) => [...prev, created]);
-        notify(`已创建：${input.name}`);
-      } catch (e) {
-        console.warn("创建知识库失败", e);
-        notify("创建失败");
-      }
-    },
-    [notify],
-  );
-
   // 删除整个知识库。
   const removeKb = useCallback(
     async (id: string) => {
@@ -203,19 +196,90 @@ function App() {
     setSidebarOpen(false);
   }, []);
 
-  // —— 详情页内的知识树增删改查 —— 在 activeKb 的 tree 上做不可变更新并写穿后端。
+  // —— 知识树增删改查 —— 在指定知识库的 tree 上做不可变更新并写穿后端。
+  // 同步更新 kbsRef，使「新建知识库后立即新建文档」等链式操作读到最新镜像。
+  const updateKbTree = useCallback(
+    (kbId: string, fn: (tree: TreeNode[]) => TreeNode[]) => {
+      const next = kbsRef.current.map((k) =>
+        k.id === kbId ? { ...k, tree: fn(k.tree) } : k,
+      );
+      kbsRef.current = next;
+      setKbs(next);
+      const target = next.find((k) => k.id === kbId);
+      if (target) persist(() => saveKb(target));
+    },
+    [persist],
+  );
+
   const updateActiveTree = useCallback(
     (fn: (tree: TreeNode[]) => TreeNode[]) => {
       if (!activeKbId) return;
-      const next = kbsRef.current.map((k) =>
-        k.id === activeKbId ? { ...k, tree: fn(k.tree) } : k,
-      );
-      setKbs(next);
-      const target = next.find((k) => k.id === activeKbId);
-      if (target) persist(() => saveKb(target));
+      updateKbTree(activeKbId, fn);
     },
-    [activeKbId, persist],
+    [activeKbId, updateKbTree],
   );
+
+  // 在指定知识库新建一篇空文档，进入该知识库并在编辑器中打开它（即「新建文字」的效果）。
+  const createDocInKb = useCallback(
+    (kbId: string) => {
+      const node = makeNode(uid(), "doc", "无标题文档", new Date().toISOString());
+      updateKbTree(kbId, (tree) => addChild(tree, null, node));
+      setActiveKbId(kbId);
+      setSidebarOpen(false);
+      setPendingOpenId(node.id);
+      notify("已新建文档：无标题文档");
+    },
+    [updateKbTree, notify],
+  );
+
+  // 弹窗提交：创建并持久化知识库。若来自「新建文档」流程，建好后自动在其中新建文档。
+  const handleCreateKb = useCallback(
+    async (input: { emoji: string; name: string; intro: string; scope: Scope }) => {
+      setNewKbOpen(false);
+      const wantDoc = createDocAfterKbRef.current;
+      createDocAfterKbRef.current = false;
+      try {
+        const created = await createKb({ ...input, sort: kbsRef.current.length });
+        const nextList = [...kbsRef.current, created];
+        kbsRef.current = nextList; // 同步镜像，便于随后 createDocInKb 读到新库
+        setKbs(nextList);
+        notify(`已创建：${input.name}`);
+        if (wantDoc) createDocInKb(created.id);
+      } catch (e) {
+        console.warn("创建知识库失败", e);
+        notify("创建失败");
+      }
+    },
+    [notify, createDocInKb],
+  );
+
+  // 「新建文档」总入口：在知识库路由下直接新建；否则提示先选择 / 创建知识库。
+  const startCreateDoc = useCallback(() => {
+    if (activeKbId) {
+      createDocInKb(activeKbId);
+      return;
+    }
+    if (kbsRef.current.length === 0) {
+      // 还没有任何知识库：提示并打开「新建知识库」，建好后自动新建文档。
+      createDocAfterKbRef.current = true;
+      notify("请先创建一个知识库");
+      setNewKbOpen(true);
+      return;
+    }
+    setPickKbOpen(true);
+  }, [activeKbId, createDocInKb, notify]);
+
+  // ⌘/Ctrl+N：新建文档（走与「+ 新建 → 文档」一致的入口）。
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        startCreateDoc();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [startCreateDoc]);
 
   const createNode = useCallback(
     (parentId: string | null) => {
@@ -224,8 +288,10 @@ function App() {
       const type: NodeType = kind.trim().toLowerCase() === "f" ? "folder" : "doc";
       const title = window.prompt("节点标题：", type === "folder" ? "新目录" : "无标题文档");
       if (!title) return;
-      const node = makeNode(`n-${Date.now()}`, type, title, new Date().toISOString());
+      const node = makeNode(uid(), type, title, new Date().toISOString());
       updateActiveTree((tree) => addChild(tree, parentId, node));
+      // 新建的是文档则顺手在编辑器中打开（与「新建文字」一致的效果）。
+      if (type === "doc") setPendingOpenId(node.id);
       notify(`已新建${type === "folder" ? "目录" : "文档"}：${title}`);
     },
     [updateActiveTree, notify],
@@ -271,6 +337,21 @@ function App() {
     [updateActiveTree, notify],
   );
 
+  // 保存文档正文：写穿节点的 content / words / 更新时间（随整棵 tree 持久化）。
+  const saveDocContent = useCallback(
+    (nodeId: string, content: string, words: number) => {
+      updateActiveTree((tree) =>
+        updateNode(tree, nodeId, {
+          content,
+          words,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+      notify("已保存");
+    },
+    [updateActiveTree, notify],
+  );
+
   const backToList = useCallback(() => setActiveKbId(null), []);
 
   return (
@@ -290,6 +371,7 @@ function App() {
         onToggleFav={toggleFav}
         onSelectKb={selectKb}
         onNewKb={openNewKb}
+        onCreateDoc={startCreateDoc}
         onStub={stub}
         onReorder={reorder}
         onToggleTheme={toggle}
@@ -326,11 +408,11 @@ function App() {
           <div className="topbar-actions">
             <CreateMenu
               align="right"
-              canCreateDoc={!!activeKb}
+              canCreateDoc
               triggerClassName="btn primary"
               title="新建"
               onNewKb={openNewKb}
-              onCreateDoc={() => createNode(null)}
+              onCreateDoc={startCreateDoc}
               onStub={stub}
             >
               <Icon name="plus" size={15} />
@@ -342,18 +424,18 @@ function App() {
         {activeKb ? (
           <KnowledgeBaseDetail
             kb={activeKb}
+            autoOpenId={pendingOpenId}
+            onAutoOpenConsumed={() => setPendingOpenId(null)}
             onBack={backToList}
             onToggleFav={toggleFav}
             onDeleteKb={removeKb}
             onCreateNode={createNode}
+            onCreateDoc={() => createDocInKb(activeKb.id)}
             onRenameNode={renameNode}
             onDeleteNode={deleteNode}
             onMoveNode={moveTreeNode}
             onMoveToRoot={moveToRoot}
-            onOpenDoc={(nodeId) => {
-              const t = findTitle(activeKb.tree, nodeId);
-              if (t) notify(`打开：${t}`);
-            }}
+            onSaveDoc={saveDocContent}
           />
         ) : (
           <div className="scrollarea">
@@ -388,10 +470,28 @@ function App() {
         onToggleTheme={toggle}
       />
 
+      <PickKbModal
+        open={pickKbOpen}
+        kbs={kbs}
+        onClose={() => setPickKbOpen(false)}
+        onPick={(id) => {
+          setPickKbOpen(false);
+          createDocInKb(id);
+        }}
+        onNewKb={() => {
+          setPickKbOpen(false);
+          createDocAfterKbRef.current = true;
+          setNewKbOpen(true);
+        }}
+      />
+
       <NewKbModal
         open={newKbOpen}
         defaultScope={view === "home" || view === "recent" ? scope : "mine"}
-        onClose={() => setNewKbOpen(false)}
+        onClose={() => {
+          setNewKbOpen(false);
+          createDocAfterKbRef.current = false; // 用户取消则放弃顺带新建文档
+        }}
         onCreate={handleCreateKb}
       />
 

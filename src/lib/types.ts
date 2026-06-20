@@ -19,6 +19,11 @@ export interface TreeNode {
   updatedAt: string;
   /** 文档字数，用于知识库概览统计（folder 通常为 0） */
   words?: number;
+  /**
+   * 文档正文：语雀 Lake 文档格式字符串（编辑器 getDocument("lake") 的产物）。
+   * 随整棵 tree 一并序列化进 SQLite 的 tree JSON 列，无需后端改动。
+   */
+  content?: string;
   /** 子节点 —— 任意节点皆可拥有，空数组表示暂无子节点 */
   children: TreeNode[];
 }

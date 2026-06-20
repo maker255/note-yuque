@@ -1,22 +1,28 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DragEvent } from "react";
 import type { DropPos, KnowledgeBase, TreeNode } from "../lib/types";
-import { countDocs, countWords } from "../lib/tree";
+import { countDocs, countWords, findNode } from "../lib/tree";
 import { formatDate } from "../lib/format";
 import { Icon } from "./Icon";
 import { TreeItem, type DropHint } from "./TreeItem";
+import { DocEditor } from "./DocEditor";
 
 interface KnowledgeBaseDetailProps {
   kb: KnowledgeBase;
+  /** 新建后待自动在编辑器中打开的文档 id（消费后由父级清空） */
+  autoOpenId?: string | null;
+  onAutoOpenConsumed?: () => void;
   onBack: () => void;
   onToggleFav: (id: string) => void;
   onDeleteKb: (id: string) => void;
   onCreateNode: (parentId: string | null) => void;
+  /** 在当前知识库新建一篇文档并打开（「新建文字」的效果） */
+  onCreateDoc: () => void;
   onRenameNode: (id: string) => void;
   onDeleteNode: (id: string) => void;
   onMoveNode: (dragId: string, targetId: string, pos: DropPos) => void;
   onMoveToRoot: (dragId: string) => void;
-  onOpenDoc: (id: string) => void;
+  onSaveDoc: (nodeId: string, content: string, words: number) => void;
 }
 
 // 初始展开：根级中带子节点的节点默认展开一层，避免首屏全展开太吵。
@@ -28,19 +34,31 @@ function initialExpanded(tree: TreeNode[]): Set<string> {
 
 export function KnowledgeBaseDetail({
   kb,
+  autoOpenId,
+  onAutoOpenConsumed,
   onBack,
   onToggleFav,
   onDeleteKb,
   onCreateNode,
+  onCreateDoc,
   onRenameNode,
   onDeleteNode,
   onMoveNode,
   onMoveToRoot,
-  onOpenDoc,
+  onSaveDoc,
 }: KnowledgeBaseDetailProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => initialExpanded(kb.tree));
   const [treeHidden, setTreeHidden] = useState(false); // 文章列表侧边栏隐藏/显示
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openDocId, setOpenDocId] = useState<string | null>(null); // 当前在右侧编辑的文档
+
+  // 父级请求自动打开某新建文档：选中并在右侧打开编辑器，然后通知父级清空标记。
+  useEffect(() => {
+    if (!autoOpenId) return;
+    setSelectedId(autoOpenId);
+    setOpenDocId(autoOpenId);
+    onAutoOpenConsumed?.();
+  }, [autoOpenId, onAutoOpenConsumed]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState<DropHint | null>(null);
   const [rootHot, setRootHot] = useState(false);
@@ -59,8 +77,11 @@ export function KnowledgeBaseDetail({
 
   function select(id: string) {
     setSelectedId(id);
-    onOpenDoc(id);
+    setOpenDocId(id); // 选中即在右侧打开该文档的编辑器
   }
+
+  // 右侧正在编辑的文档节点（可能因删除/切换知识库而失效，故每次从最新树中查找）。
+  const openDoc = openDocId ? findNode(kb.tree, openDocId) : null;
 
   // —— 拖拽：三分区判定 before / inside / after ——
   function handleDragOver(e: DragEvent, id: string) {
@@ -117,8 +138,8 @@ export function KnowledgeBaseDetail({
           {kb.tree.length === 0 ? (
             <div className="kbd-tree-empty">
               还没有内容
-              <button className="kbd-tree-empty-add" onClick={() => onCreateNode(null)}>
-                新建第一个节点
+              <button className="kbd-tree-empty-add" onClick={onCreateDoc}>
+                新建第一篇文档
               </button>
             </div>
           ) : (
@@ -164,21 +185,35 @@ export function KnowledgeBaseDetail({
         </div>
       </aside>
 
-      {/* ───── 右：知识库概览 ───── */}
+      {/* ───── 右：选中文档则显示编辑器，否则显示知识库概览 ───── */}
       <div className="kbd-main">
-        {treeHidden && (
-          <button
-            className="kbd-tree-reveal"
-            onClick={() => setTreeHidden(false)}
-            title="显示文章列表"
-            aria-label="显示文章列表"
-          >
-            <Icon name="panel" size={16} />
-            文章列表
-          </button>
-        )}
-        <div className="kbd-scroll">
-          <header className="kbd-hero">
+        {(() => {
+          const revealBtn = treeHidden ? (
+            <button
+              className="kbd-tree-reveal"
+              onClick={() => setTreeHidden(false)}
+              title="显示文章列表"
+              aria-label="显示文章列表"
+            >
+              <Icon name="panel" size={16} />
+              文章列表
+            </button>
+          ) : null;
+          return openDoc ? (
+            <DocEditor
+              key={openDoc.id}
+              node={openDoc}
+              leading={revealBtn}
+              onSave={(content, words) => onSaveDoc(openDoc.id, content, words)}
+              onBack={() => {
+                setOpenDocId(null);
+                setSelectedId(null);
+              }}
+            />
+          ) : (
+            <div className="kbd-scroll">
+            {revealBtn && <div className="kbd-reveal-bar">{revealBtn}</div>}
+            <header className="kbd-hero">
             <div className="kbd-hero-icon">{kb.emoji}</div>
             <div className="kbd-hero-info">
               <div className="kbd-hero-titlerow">
@@ -206,7 +241,7 @@ export function KnowledgeBaseDetail({
                 <Icon name="star" size={15} />
                 {kb.fav ? "已收藏" : "收藏"}
               </button>
-              <button className="btn" onClick={() => onCreateNode(null)}>
+              <button className="btn" onClick={onCreateDoc}>
                 <Icon name="plus" size={15} />
                 新建文档
               </button>
@@ -237,7 +272,9 @@ export function KnowledgeBaseDetail({
             />
             {kb.tree.length === 0 && <div className="kbd-doclist-empty">暂无文档</div>}
           </div>
-        </div>
+          </div>
+          );
+        })()}
       </div>
     </div>
   );

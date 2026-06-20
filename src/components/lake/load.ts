@@ -1,0 +1,34 @@
+// 轮询 iframe 的 contentWindow.Doc，直到 CDN 的 Lake UMD 包就绪（10s 超时）。
+// 从 ../note-yuque/src/components/lake-rich/load.ts 原样移植。
+declare global {
+  interface Window {
+    Doc: any;
+  }
+}
+
+// 最大等待时间 10s
+const LOAD_TIME_OUT = 10_000;
+
+function isLakeEditorLoaded(win: Window & { Doc: any }) {
+  return !!win.Doc;
+}
+
+export default function loadLakeEditor(win: Window & { Doc: any }) {
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    if (isLakeEditorLoaded(win)) {
+      resolve(win.Doc);
+      return;
+    }
+    const load = () => {
+      if (isLakeEditorLoaded(win)) {
+        resolve(win.Doc);
+      } else if (Date.now() - start > LOAD_TIME_OUT) {
+        reject(new Error("load lake editor timeout"));
+      } else {
+        setTimeout(load, 100);
+      }
+    };
+    setTimeout(load, 100);
+  });
+}
